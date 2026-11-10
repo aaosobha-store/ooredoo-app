@@ -1,0 +1,43 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:   # adds a "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The zip only contains lib/ and pubspec.yaml, so generate the android/ folder here.
+      - name: Generate Android project
+        run: flutter create . --platforms=android --project-name ooredoo_app --org dz.ooredoo.store
+
+      - name: Add internet permission + minSdk 23
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.INTERNET' $MANIFEST || \
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' $MANIFEST
+          for f in android/app/build.gradle android/app/build.gradle.kts; do
+            [ -f "$f" ] && sed -i -E 's/minSdk(Version)?( =)? *flutter\.minSdkVersion/minSdk\1\2 23/' "$f" || true
+          done
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ooredoo-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
